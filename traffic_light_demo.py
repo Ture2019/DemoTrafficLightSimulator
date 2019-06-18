@@ -1,15 +1,37 @@
 #!/usr/bin/python3.6 -tt
 # -*- coding: utf-8 -*-
-# pylint: disable=redefined-outer-name, missing-docstring, invalid-name
+# pylint: disable=redefined-outer-name, missing-docstring, invalid-name, global-statement, unused-variable
 """ Demo Simulator for a traffic light. """
 import os
 import random
-from time import sleep
 from collections import namedtuple
 from functools import partial, wraps
-from pandas import DataFrame, Series
+from time import sleep
 
 import simpy
+from pandas import DataFrame, Series
+
+# Global variables
+ENV = None
+TRAFFIC_LIGHT = None
+ANIMATION_STRING = """
+Animation:                                                                 ┌───┐                                          
+                                                                           │ g │                                          
+┌───────┐                                                                  │ y │                                          
+│ time  │                                                                  │ r │     .▕       ▕ ─.                        
+└───────┘                                                                  └─╦─┘_.──'             `───.                   
+─────────────────────────────────────────────────────────────────────────────╝ '       .───────.       `──────────────────
+ ───▶                                                                                ,'         `.                        
+══════════════════════════════════════════════════════════════════════════════      ───────────────     ══════════════════
+                                                                                                                          
+─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                           ─ ─ ─ ─ ─ ─ ─ ─ ─ 
+ roadway
+═══════════════════════════════════════════════════════c══════════════════p══s       ─────────────      ══════════════════
+ ◀───                                                                                 `.       ,'                         
+───────────────────────────────────────────────────────────────────────────────`.       `─────'       ,'──────────────────
+                                                                                 `───.           _.──'                    
+                                                                                      `─────────'                         
+"""
 
 class TrafficLight():
     def __init__(self):
@@ -68,18 +90,18 @@ class TrafficLight():
         self.transit_area.put(1)
         self.most_recent_call_time = ENV.now
         #if not self.light_cycle or self.light_cycle.processed:
-        #    print('Call')
+        #    #print('Call')
         #    self.light_cycle = ENV.process(self.run_traffic_light_cycle())
 
     def trigger_proximity_sensor(self):
         if (not self.light_cycle or self.light_cycle.processed):
-            print('Proximity')
+            #print('Proximity')
             self.light_cycle = ENV.process(self.run_traffic_light_cycle())
 
     def trigger_sign_off_detector(self):
         self.transit_area.get(1)
         if self.light_cycle and not self.light_cycle.processed and self.transit_area.level == 0:
-            print('Sign-off')
+            #print('Sign-off')
             self.light_cycle.interrupt()
 
     def enqueue(self, bus):
@@ -203,47 +225,29 @@ def create_constant_stream_of_buses(fleet, observations, mean_time_between_buses
         random_duration = random.expovariate(1 / mean_time_between_buses)
         yield ENV.timeout(random_duration)
 
-if __name__ == "__main__":
-    os.system('clear')
+def set_stage():
+    global ENV, TRAFFIC_LIGHT
     ENV = simpy.Environment()
     TRAFFIC_LIGHT = TrafficLight()
     fleet, observations = [], []
     ENV.process(create_constant_stream_of_buses(fleet, observations))
-    ENV.run(until=100)
-    print('----------------------')
+    return fleet, observations
 
-    #Reporting
+def main():    
+    print('Reporting:')
+    fleet, observations = set_stage()
+    ENV.run(until=100)
     print('Fleet size:', len(fleet))
     report = DataFrame(data=observations)
     print('Avg. travel time: %.1f' % report.travel_time.mean())
+    sleep(3)
 
-    #Unit testing
+    #Unit testing:
 
-    #Optimization
+    #Optimization:
 
-    #Animation
-    ascii_string = """
-                                                                           ┌───┐                                          
-                                                                           │ g │                                          
-┌───────┐                                                                  │ y │                                          
-│ time  │                                                                  │ r │     .▕       ▕ ─.                        
-└───────┘                                                                  └─╦─┘_.──'             `───.                   
-─────────────────────────────────────────────────────────────────────────────╝ '       .───────.       `──────────────────
- ───▶                                                                                ,'         `.                        
-══════════════════════════════════════════════════════════════════════════════      ───────────────     ══════════════════
-                                                                                                                          
-─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─                           ─ ─ ─ ─ ─ ─ ─ ─ ─ 
- roadway
-═══════════════════════════════════════════════════════c══════════════════p══s       ─────────────      ══════════════════
- ◀───                                                                                 `.       ,'                         
-───────────────────────────────────────────────────────────────────────────────`.       `─────'       ,'──────────────────
-                                                                                 `───.           _.──'                    
-                                                                                      `─────────'                         
-"""
-    ENV = simpy.Environment()
-    TRAFFIC_LIGHT = TrafficLight()
-    fleet, observations = [], []
-    ENV.process(create_constant_stream_of_buses(fleet, observations))
+    #Animation:
+    fleet, observations = set_stage()
     last = 0
     for i in range(1, 100):
         os.system('clear')
@@ -264,7 +268,11 @@ if __name__ == "__main__":
             roadway[position[0]] = replacement
         roadway = ''.join(roadway)
         time = ('%d' % ENV.now).rjust(4, ' ')
-        rep = ascii_string.replace('roadway', roadway).replace('time', time).replace('g', g).replace('y', y).replace('r', r)
+        rep = ANIMATION_STRING.replace('roadway', roadway).replace('time', time).replace('g', g).replace('y', y).replace('r', r)
         print(rep)
         ENV.run(until=i)
         sleep(.5)
+
+if __name__ == "__main__":
+    os.system('clear')
+    main()
