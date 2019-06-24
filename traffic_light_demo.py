@@ -1,13 +1,17 @@
 #!/usr/bin/python3.6 -tt
 # -*- coding: utf-8 -*-
 # pylint: disable=redefined-outer-name, missing-docstring, invalid-name, global-statement, unused-variable
-""" Demo Simulator for a traffic light. """
+""" Demo Simulator for a traffic light. 
+    On Mac press Crtl-z to pause running program and fg to continue.
+"""
 import os
 import random
+import unittest
 from collections import namedtuple
 from functools import partial, wraps
 from time import sleep
 
+import numpy as np
 import simpy
 from pandas import DataFrame, Series
 
@@ -15,7 +19,7 @@ from pandas import DataFrame, Series
 ENV = None
 TRAFFIC_LIGHT = None
 ANIMATION_STRING = """
-Animation:                                                                 ┌───┐                                          
+Animation...                                                               ┌───┐                                          
                                                                            │ g │                                          
 ┌───────┐                                                                  │ y │                                          
 │ time  │                                                                  │ r │     .▕       ▕ ─.                        
@@ -43,6 +47,7 @@ class TrafficLight():
         self.red_light_queue = simpy.Store(ENV, capacity=simpy.core.Infinity)
         self.head_of_queue = {}  # dictionary: bus - event
         self.position_in_queue = {}  # dictionary: bus - int
+        self.length_green_phase = 40
 
     def run_traffic_light_cycle(self):
         try:
@@ -56,7 +61,7 @@ class TrafficLight():
 
             self.signal = 'green'
             self.turns_green.succeed()
-            yield ENV.timeout(40)
+            yield ENV.timeout(self.length_green_phase)
 
             if self.most_recent_call_time > start:
                 #Prolong light cycle
@@ -194,6 +199,19 @@ class Bus():
         yield ENV.timeout(self.get_time_for_movement())
 
 
+class BusTestCase(unittest.TestCase):
+    """ Tests for the bus class. """
+    def test_drive(self):
+        """Unit test fore the driving method."""
+        global ENV, TRAFFIC_LIGHT
+        ENV = simpy.Environment()
+        TRAFFIC_LIGHT = TrafficLight()
+        bus = Bus(nr=0)
+        ENV.process(bus.drive())
+        ENV.run()
+        self.assertEqual(bus.movement.to_pos, 600)
+
+
 def patch_bus(bus, monitor):
     """ Patch *bus* so it can be monitored. For reporting."""
     def get_wrapper(func):
@@ -233,20 +251,34 @@ def set_stage():
     ENV.process(create_constant_stream_of_buses(fleet, observations))
     return fleet, observations
 
-def main():    
-    print('Reporting:')
+def main():
+    # Reporting...
+    print('Reporting...')
     fleet, observations = set_stage()
     ENV.run(until=100)
     print('Fleet size:', len(fleet))
-    report = DataFrame(data=observations)
+    report = DataFrame(observations)
     print('Avg. travel time: %.1f' % report.travel_time.mean())
-    sleep(3)
+    sleep(5)
 
-    #Unit testing:
+    # Unit testing...
+    print('\nUnit testing:')
+    unittest.main(exit=False, verbosity=2)
+    sleep(5)
 
-    #Optimization:
+    #Optimization...
+    print('\n\nOptimization...')
+    for possible_value in range(5, 55, 5):
+        for _j in range(20):
+            travel_times = []
+            fleet, observations = set_stage()
+            TRAFFIC_LIGHT.length_green_phase = possible_value
+            ENV.run(until=100)
+            travel_times.append(DataFrame(observations).travel_time.mean())
+        print('Green', possible_value, 'travel time %.1f' % np.mean(travel_times))
+    sleep(5)
 
-    #Animation:
+    #Animation...
     fleet, observations = set_stage()
     last = 0
     for i in range(1, 100):
