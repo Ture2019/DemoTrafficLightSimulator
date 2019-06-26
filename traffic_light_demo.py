@@ -1,9 +1,7 @@
 #!/usr/bin/python3.6 -tt
 # -*- coding: utf-8 -*-
 # pylint: disable=redefined-outer-name, missing-docstring, invalid-name, global-statement, unused-variable
-""" Demo Simulator for a traffic light. 
-    On Mac press Crtl-z to pause running program and fg to continue.
-"""
+""" Demo Simulator for a traffic light"""
 import os
 import random
 import unittest
@@ -36,6 +34,91 @@ Animation...                                                               ┌�
                                                                                  `───.           _.──'                    
                                                                                       `─────────'                         
 """
+
+Movement = namedtuple('Movement', ['from_time', 'from_pos', 'to_pos', 'speed'])
+
+class Bus():
+    def __init__(self, nr: int):
+        self.nr = nr
+        self.movement = Movement(ENV.now, 0, 0, 0)
+
+    def __str__(self):
+        return 'bus%d' % self.nr
+
+    def get_pos(self):
+        pos = min(self.movement.from_pos + (ENV.now - self.movement.from_time) * self.movement.speed, self.movement.to_pos)
+        return pos
+
+    def get_time_for_movement(self):
+        return (self.movement.to_pos - self.movement.from_pos) / self.movement.speed
+
+    def drive(self):
+        #Drive to call detector
+        self.movement = Movement(ENV.now, 0, 260, 13)
+        yield ENV.timeout(self.get_time_for_movement())
+        TRAFFIC_LIGHT.trigger_call_detector()
+
+        #Drive to decision point
+        self.movement = Movement(ENV.now, 260, 310, 13)
+        yield ENV.timeout(self.get_time_for_movement())
+
+        if TRAFFIC_LIGHT.signal == 'red' or TRAFFIC_LIGHT.red_light_queue.items:
+            #Drive to proximity sensor
+            self.movement = Movement(ENV.now, 310, 365, 6.5)
+            yield ENV.timeout(self.get_time_for_movement())
+            TRAFFIC_LIGHT.trigger_proximity_sensor()
+
+            #Drive to stop line
+            self.movement = Movement(ENV.now, 365, 380, 6.5)
+            yield ENV.timeout(self.get_time_for_movement())
+
+            #Wait for first place in queue
+            yield TRAFFIC_LIGHT.enqueue(self)
+
+            #Wait for green
+            yield TRAFFIC_LIGHT.turns_green
+            yield ENV.timeout(1) #driver reaction time
+
+            #Drive out of queue
+            TRAFFIC_LIGHT.dequeue(self)
+            TRAFFIC_LIGHT.trigger_sign_off_detector()
+
+            #Accelerate to cruise speed
+            self.movement = Movement(ENV.now, 380, 430, 6.5)
+            yield ENV.timeout(self.get_time_for_movement())
+
+        else:
+            #Drive to proximity sensor
+            self.movement = Movement(ENV.now, 310, 365, 13)
+            yield ENV.timeout(self.get_time_for_movement())
+            TRAFFIC_LIGHT.trigger_proximity_sensor()
+
+            #Drive to stop line
+            self.movement = Movement(ENV.now, 365, 380, 13)
+            ENV.timeout(self.get_time_for_movement())
+            TRAFFIC_LIGHT.trigger_sign_off_detector()
+
+            #Drive over roundabout
+            self.movement = Movement(ENV.now, 380, 430, 13)
+            yield ENV.timeout(self.get_time_for_movement())
+
+        #Drive rest of the track
+        self.movement = Movement(ENV.now, 430, 600, 13)
+        yield ENV.timeout(self.get_time_for_movement())
+
+
+class BusTestCase(unittest.TestCase):
+    """ Tests for the bus class. """
+    def test_drive(self):
+        """Unit test fore the driving method."""
+        global ENV, TRAFFIC_LIGHT
+        ENV = simpy.Environment()
+        TRAFFIC_LIGHT = TrafficLight()
+        bus = Bus(nr=0)
+        ENV.process(bus.drive())
+        ENV.run()
+        self.assertEqual(bus.movement.to_pos, 600)
+
 
 class TrafficLight():
     def __init__(self):
@@ -127,91 +210,6 @@ class TrafficLight():
         return self.position_in_queue[bus]
 
 
-Movement = namedtuple('Movement', ['from_time', 'from_pos', 'to_pos', 'speed'])
-
-class Bus():
-    def __init__(self, nr: int):
-        self.nr = nr
-        self.movement = Movement(ENV.now, 0, 0, 0)
-
-    def __str__(self):
-        return 'bus%d' % self.nr
-
-    def get_pos(self):
-        pos = min(self.movement.from_pos + (ENV.now - self.movement.from_time) * self.movement.speed, self.movement.to_pos)
-        return pos
-
-    def get_time_for_movement(self):
-        return (self.movement.to_pos - self.movement.from_pos) / self.movement.speed
-
-    def drive(self):
-        #Drive to call detector
-        self.movement = Movement(ENV.now, 0, 260, 13)
-        yield ENV.timeout(self.get_time_for_movement())
-        TRAFFIC_LIGHT.trigger_call_detector()
-
-        #Drive to decision point
-        self.movement = Movement(ENV.now, 260, 310, 13)
-        yield ENV.timeout(self.get_time_for_movement())
-
-        if TRAFFIC_LIGHT.signal == 'red' or TRAFFIC_LIGHT.red_light_queue.items:
-            #Drive to proximity sensor
-            self.movement = Movement(ENV.now, 310, 365, 6.5)
-            yield ENV.timeout(self.get_time_for_movement())
-            TRAFFIC_LIGHT.trigger_proximity_sensor()
-
-            #Drive to stop line
-            self.movement = Movement(ENV.now, 365, 380, 6.5)
-            yield ENV.timeout(self.get_time_for_movement())
-
-            #Wait for first place in queue
-            yield TRAFFIC_LIGHT.enqueue(self)
-
-            #Wait for green
-            yield TRAFFIC_LIGHT.turns_green
-            yield ENV.timeout(1) #driver reaction time
-
-            #Drive out of queue
-            TRAFFIC_LIGHT.dequeue(self)
-            TRAFFIC_LIGHT.trigger_sign_off_detector()
-
-            #Accelerate to cruise speed
-            self.movement = Movement(ENV.now, 380, 430, 6.5)
-            yield ENV.timeout(self.get_time_for_movement())
-
-        else:
-            #Drive to proximity sensor
-            self.movement = Movement(ENV.now, 310, 365, 13)
-            yield ENV.timeout(self.get_time_for_movement())
-            TRAFFIC_LIGHT.trigger_proximity_sensor()
-
-            #Drive to stop line
-            self.movement = Movement(ENV.now, 365, 380, 13)
-            ENV.timeout(self.get_time_for_movement())
-            TRAFFIC_LIGHT.trigger_sign_off_detector()
-
-            #Drive over roundabout
-            self.movement = Movement(ENV.now, 380, 430, 13)
-            yield ENV.timeout(self.get_time_for_movement())
-
-        #Drive rest of the track
-        self.movement = Movement(ENV.now, 430, 600, 13)
-        yield ENV.timeout(self.get_time_for_movement())
-
-
-class BusTestCase(unittest.TestCase):
-    """ Tests for the bus class. """
-    def test_drive(self):
-        """Unit test fore the driving method."""
-        global ENV, TRAFFIC_LIGHT
-        ENV = simpy.Environment()
-        TRAFFIC_LIGHT = TrafficLight()
-        bus = Bus(nr=0)
-        ENV.process(bus.drive())
-        ENV.run()
-        self.assertEqual(bus.movement.to_pos, 600)
-
-
 def patch_bus(bus, monitor):
     """ Patch *bus* so it can be monitored. For reporting."""
     def get_wrapper(func):
@@ -259,12 +257,12 @@ def main():
     print('Fleet size:', len(fleet))
     report = DataFrame(observations)
     print('Avg. travel time: %.1f' % report.travel_time.mean())
-    sleep(5)
+    input()
 
     # Unit testing...
     print('\nUnit testing:')
     unittest.main(exit=False, verbosity=2)
-    sleep(5)
+    input()
 
     #Optimization...
     print('\n\nOptimization...')
@@ -276,7 +274,7 @@ def main():
             ENV.run(until=100)
             travel_times.append(DataFrame(observations).travel_time.mean())
         print('Green', possible_value, 'travel time %.1f' % np.mean(travel_times))
-    sleep(5)
+    input()
 
     #Animation...
     fleet, observations = set_stage()
@@ -304,6 +302,7 @@ def main():
         print(rep)
         ENV.run(until=i)
         sleep(.5)
+    print('Done.')
 
 if __name__ == "__main__":
     os.system('clear')
